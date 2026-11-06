@@ -129,8 +129,6 @@ arbitrary keys (for example `role: "root"`), which is mass assignment.
 | `-d '{"theme":"dark","language":"fr","fontSize":"large"}'` (positive) | 200 | 200 Settings saved successfully |
 | Save Settings button in the UI (positive) | Works | Works |
 
-Evidence: *(add terminal screenshots of the curl commands and the UI save message)*
-
 ---
 
 ## 3. SSR Token Leakage

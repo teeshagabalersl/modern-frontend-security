@@ -1,0 +1,74 @@
+Part A: Hands-On Security Code Review
+
+Code documented with security concerns
+--------------------------------------
+// Finding 1: location.hash - Untrusted URL Data (source)
+const value = location.hash.substring(1);
+
+// Finding 2: innerHTML - DOM-Based XSS (sink, no sanitisation or encoding)
+document.querySelector("#result").innerHTML = value;
+
+const config = {};
+
+// Finding 3: localStorage - Untrusted Client-Side Data
+
+// Finding 4: JSON.parse() - Untrusted JSON Deserialization
+
+// Finding 5: Object.assign() - Prototype Pollution
+
+// Finding 6: __proto__ - Prototype Manipulation
+
+// Finding 9: JSON.parse() - Missing Error Handling
+
+// Finding 10: No Allowlist/Schema Validation (Mass Assignment)
+Object.assign(
+    config,
+    JSON.parse(
+        localStorage.getItem("config")
+    )
+);
+
+// Finding 7: getUser() - Sensitive User Data Exposure
+const user = await getUser();
+
+// Finding 8: renderClient() - SSR Token Leakage
+renderClient({
+    user
+});
+
+
+Findings
+--------
+
+Finding 1: location.hash - Untrusted URL Data
+The location.hash property retrieves data directly from the URL. Since users (or attackers who craft a link) can control URL values, this data must be treated as untrusted input and validated before it is used anywhere in the application.
+
+Finding 2: innerHTML - DOM-Based Cross-Site Scripting (DOM XSS)
+The untrusted value from location.hash (source) is assigned directly to innerHTML (sink) with no sanitisation or output encoding. innerHTML parses the value as HTML, so malicious markup such as <img src=x onerror=alert(1)> supplied through the URL will execute JavaScript in the browser. Safer alternatives are textContent or a trusted sanitiser such as DOMPurify.
+
+Finding 3: localStorage - Untrusted Client-Side Data
+Data stored in localStorage can be modified by the user, by browser extensions or by any malicious script running on the same origin. It must not be trusted without proper validation.
+
+Finding 4: JSON.parse() - Untrusted JSON Deserialization
+JSON.parse() converts the data retrieved from localStorage into a JavaScript object without validating whether it contains the expected and safe properties and value types. Parsing succeeds for any well-formed JSON, including objects with dangerous keys.
+
+Finding 5: Object.assign() - Prototype Pollution
+Object.assign() copies properties from the parsed (untrusted) object into the config object. If the parsed object contains a malicious key such as __proto__, constructor or prototype, it can modify the prototype of the target object and introduce unexpected behaviour or security issues across the application.
+
+Finding 6: __proto__ - Prototype Manipulation
+JSON.parse() creates "__proto__" as a normal own property, and Object.assign() then writes it using the __proto__ setter, which replaces the prototype of the target object. If untrusted data containing this key is processed without validation, an attacker can inject properties (for example isAdmin) that every object using that prototype will inherit.
+
+Finding 7: getUser() - Sensitive User Data Exposure
+The getUser() function retrieves user information. If the returned object contains sensitive information such as authentication tokens, session identifiers or other internal fields, then using the complete object on the client may expose confidential data. Only the minimum required public fields should be used.
+
+Finding 8: renderClient() - Server-Side Rendering (SSR) Token Leakage
+Passing the complete user object to renderClient() may expose sensitive server-side information if it is serialised into client-accessible HTML or JavaScript (for example window.__DATA__ or an inline script). Any script on the page, including injected scripts, could read it. Only the necessary public user fields should be passed to the client, and secrets should be kept in HttpOnly cookies.
+
+Finding 9: JSON.parse() - Missing Error Handling
+There is no try/catch around JSON.parse(localStorage.getItem("config")). Corrupted or tampered localStorage data throws an exception and breaks the application. The await getUser() call also has no error handling, so a failed request causes an unhandled promise rejection.
+
+Finding 10: No Allowlist or Schema Validation - Mass Assignment
+The parsed config object is merged into config without checking which keys are allowed or what types the values have. An attacker who controls localStorage can inject arbitrary properties. Only known keys with validated values should be copied, using an allowlist or a schema validator.
+
+Finding 11: Missing Content Security Policy and Trusted Types
+Nothing limits what an injected script can do. A strict Content Security Policy (script-src 'self' with nonces, no unsafe-inline) and Trusted Types would act as a second layer of defence and block the XSS payload even if the innerHTML issue is missed.
