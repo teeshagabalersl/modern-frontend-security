@@ -1,10 +1,131 @@
 const express = require("express");
 const path = require("path");
+const crypto = require("crypto");
 
 const { user, defaultSettings } = require("./data");
 
 const app = express();
 const PORT = 3000;
+
+app.disable("x-powered-by");
+
+/* ======================================================================
+ * SECURITY HELPERS
+ * ==================================================================== */
+
+/*
+ * FIX 1 (DOM XSS): encode untrusted text before putting it in HTML.
+ */
+function escapeHtml(value) {
+    return String(value ?? "")
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#39;");
+}
+
+/*
+ * FIX 2 (Prototype pollution): only these settings, with only these
+ * values, are accepted. "__proto__", "constructor" and every other
+ * unknown key are rejected.
+ */
+const ALLOWED_SETTINGS = Object.freeze({
+    theme: ["light", "dark"],
+    language: ["en", "fr"],
+    fontSize: ["small", "medium", "large"]
+});
+
+function validateSettings(input) {
+    if (input === null || typeof input !== "object" || Array.isArray(input)) {
+        return { ok: false, error: "Settings must be a JSON object." };
+    }
+
+    const clean = {};
+
+    // Object.keys() returns own, enumerable keys only
+    for (const key of Object.keys(input)) {
+        if (!Object.hasOwn(ALLOWED_SETTINGS, key)) {
+            return { ok: false, error: `Unknown setting: ${key}` };
+        }
+
+        const value = input[key];
+
+        if (
+            typeof value !== "string" ||
+            !ALLOWED_SETTINGS[key].includes(value)
+        ) {
+            return { ok: false, error: `Invalid value for setting: ${key}` };
+        }
+
+        clean[key] = value;
+    }
+
+    return { ok: true, settings: clean };
+}
+
+/*
+ * FIX 3 (SSR token leakage): only public fields may leave the server.
+ * sessionToken and refreshToken are never sent to the browser.
+ */
+const PUBLIC_USER_FIELDS = ["id", "name", "email", "role"];
+
+function toPublicUser(source) {
+    const publicUser = {};
+
+    for (const field of PUBLIC_USER_FIELDS) {
+        publicUser[field] = source[field];
+    }
+
+    return publicUser;
+}
+
+/*
+ * FIX 3: safely embed JSON inside an HTML <script> element so data
+ * can never close the tag or start HTML parsing.
+ */
+function serializeForHtml(value) {
+    return JSON.stringify(value)
+        .replace(/</g, "\\u003c")
+        .replace(/>/g, "\\u003e")
+        .replace(/&/g, "\\u0026")
+        .replace(/\u2028/g, "\\u2028")
+        .replace(/\u2029/g, "\\u2029");
+}
+
+/*
+ * FIX 4 (CSP) + FIX 5 (Clickjacking): security headers on every response.
+ *
+ * - A fresh random nonce is created per request. Only inline <script> /
+ *   <style> tags carrying that nonce may run, so injected inline code is
+ *   blocked ('unsafe-inline' is NOT used).
+ * - frame-ancestors 'none' and X-Frame-Options: DENY stop any site
+ *   (including the iframe test page) from embedding the app.
+ */
+app.use((req, res, next) => {
+    const nonce = crypto.randomBytes(16).toString("base64");
+    res.locals.nonce = nonce;
+
+    res.set({
+        "Content-Security-Policy": [
+            "default-src 'self'",
+            `script-src 'self' 'nonce-${nonce}'`,
+            `style-src 'self' 'nonce-${nonce}'`,
+            "img-src 'self' data:",
+            "font-src 'self'",
+            "connect-src 'self'",
+            "object-src 'none'",
+            "base-uri 'none'",
+            "form-action 'self'",
+            "frame-ancestors 'none'"
+        ].join("; "),
+        "X-Frame-Options": "DENY",
+        "X-Content-Type-Options": "nosniff",
+        "Referrer-Policy": "no-referrer"
+    });
+
+    next();
+});
 
 app.use(express.json());
 
@@ -12,7 +133,8 @@ app.use(express.json());
  * Home page
  */
 app.get("/", (req, res) => {
-    const initialUserData = JSON.stringify(user);
+    // FIX 3: public fields only, safely serialised
+    const initialUserData = serializeForHtml(toPublicUser(user));
 
     res.send(`
         <!DOCTYPE html>
@@ -75,9 +197,7 @@ app.get("/", (req, res) => {
                 </section>
             </main>
 
-            <script>
-                window.initialUser = ${initialUserData};
-            </script>
+            <script id="initial-user" type="application/json">${initialUserData}</script>
 
             <script src="/app.js"></script>
         </body>
@@ -89,7 +209,9 @@ app.get("/", (req, res) => {
  * Profile API
  */
 app.get("/api/profile", (req, res) => {
-    res.json(user);
+    // FIX 3: no tokens in the API response
+    res.set("Cache-Control", "no-store");
+    res.json(toPublicUser(user));
 });
 
 /*
@@ -100,13 +222,16 @@ app.get("/api/settings", (req, res) => {
 });
 
 app.post("/api/settings", (req, res) => {
-    const incomingSettings = req.body;
+    // FIX 2: validate against the allowlist before using any input
+    const result = validateSettings(req.body);
 
-    const settings = {};
-
-    for (const key in incomingSettings) {
-        settings[key] = incomingSettings[key];
+    if (!result.ok) {
+        return res.status(400).json({
+            message: result.error
+        });
     }
+
+    const settings = { ...defaultSettings, ...result.settings };
 
     res.json({
         message: "Settings saved successfully.",
@@ -115,9 +240,22 @@ app.post("/api/settings", (req, res) => {
 });
 
 /*
+ * Malformed JSON bodies return a clean 400 instead of a stack trace
+ */
+app.use((err, req, res, next) => {
+    if (err && err.type === "entity.parse.failed") {
+        return res.status(400).json({ message: "Invalid JSON body." });
+    }
+
+    next(err);
+});
+
+/*
  * Account page
  */
 app.get("/account", (req, res) => {
+    const nonce = res.locals.nonce;
+
     res.send(`
         <!DOCTYPE html>
         <html lang="en">
@@ -129,7 +267,7 @@ app.get("/account", (req, res) => {
             >
             <title>Account Settings</title>
 
-            <style>
+            <style nonce="${nonce}">
                 body {
                     font-family: Arial, sans-serif;
                     background: #f4f4f4;
@@ -162,17 +300,17 @@ app.get("/account", (req, res) => {
 
                 <p>
                     <strong>Name:</strong>
-                    ${user.name}
+                    ${escapeHtml(user.name)}
                 </p>
 
                 <p>
                     <strong>Email:</strong>
-                    ${user.email}
+                    ${escapeHtml(user.email)}
                 </p>
 
                 <p>
                     <strong>Role:</strong>
-                    ${user.role}
+                    ${escapeHtml(user.role)}
                 </p>
 
                 <button
@@ -185,7 +323,7 @@ app.get("/account", (req, res) => {
                 <p id="status"></p>
             </div>
 
-            <script>
+            <script nonce="${nonce}">
                 document
                     .getElementById("delete-account")
                     .addEventListener("click", () => {
