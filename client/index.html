@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+
+    <meta
+        name="viewport"
+        content="width=device-width, initial-scale=1.0"
+    >
+
+    <title>User Security Dashboard</title>
+
+    <link rel="stylesheet" href="/styles.css">
+</head>
+
+<body>
+
+    <header class="header">
+        <h1>User Security Dashboard</h1>
+
+        <nav>
+            <a href="/">Dashboard</a>
+            <a href="/account">Account Settings</a>
+        </nav>
+    </header>
+
+    <main class="container">
+
+        <div id="app"></div>
+
+        <section class="settings">
+            <h2>User Settings</h2>
+
+            <label>
+                Theme:
+                <select id="theme">
+                    <option value="light">Light</option>
+                    <option value="dark">Dark</option>
+                </select>
+            </label>
+
+            <label>
+                Language:
+                <select id="language">
+                    <option value="en">English</option>
+                    <option value="fr">French</option>
+                </select>
+            </label>
+
+            <label>
+                Font Size:
+                <select id="fontSize">
+                    <option value="small">Small</option>
+                    <option value="medium">Medium</option>
+                    <option value="large">Large</option>
+                </select>
+            </label>
+
+            <button id="save-settings">
+                Save Settings
+            </button>
+
+            <p id="settings-status"></p>
+        </section>
+
+    </main>
+
+    <script src="/app.js"></script>
+
+</body>
+</html>

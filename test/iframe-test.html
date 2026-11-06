@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+
+    <meta
+        name="viewport"
+        content="width=device-width, initial-scale=1.0"
+    >
+
+    <title>Iframe Security Test</title>
+
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 30px;
+            background: #f4f4f4;
+        }
+
+        .container {
+            max-width: 1000px;
+            margin: auto;
+            background: white;
+            padding: 25px;
+            border-radius: 8px;
+        }
+
+        iframe {
+            width: 100%;
+            height: 500px;
+            border: 2px solid #333;
+        }
+    </style>
+</head>
+
+<body>
+
+    <div class="container">
+
+        <h1>Iframe Security Test</h1>
+
+        <p>
+            This page attempts to embed the application's
+            account settings page.
+        </p>
+
+        <iframe
+            src="http://localhost:3000/account"
+            title="Account Settings">
+        </iframe>
+
+    </div>
+
+</body>
+
+</html>

@@ -1,0 +1,13 @@
+{
+  "name": "modern-frontend-security",
+  "version": "1.0.0",
+  "description": "Intentionally vulnerable application for front-end security training",
+  "main": "server/server.js",
+  "scripts": {
+    "start": "node server/server.js",
+    "dev": "node --watch server/server.js"
+  },
+  "dependencies": {
+    "express": "^5.1.0"
+  }
+}
