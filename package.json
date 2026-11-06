@@ -4,8 +4,8 @@
   "description": "Intentionally vulnerable application for front-end security training",
   "main": "server/server.js",
   "scripts": {
-    "start": "node server/server.js",
-    "dev": "node --watch server/server.js"
+    "start": "node --disable-proto=delete server/server.js",
+    "dev": "node --disable-proto=delete --watch server/server.js"
   },
   "dependencies": {
     "express": "^5.1.0"
